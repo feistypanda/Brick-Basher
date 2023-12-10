@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html> 
+  <head>
+    <title>Brick Basher</title> 
+  </head>
+  <body>
+    
+    <canvas id="mycanvas"></canvas> 
+  </body>
+ 
+  <script src="https://cdn.jsdelivr.net/processing.js/1.4.8/processing.min.js"></script> 
+
+  <script>
+  var programCode = function(processingInstance) {
+    with (processingInstance) {
+size(600, 600, P2D); 
+
+size(600, 600, P2D); 
+smooth();
+angleMode = "radians";
+frameRate(60);
+
+var gravity = 2;
+var mouseHold= false;
+var lives = 3;
+
+var colorSchemes = [
+    {
+        player: color(252, 0, 126),
+        face: color(255),
+        back: color(255),
+        ball: color(255, 0, 0),
+    }
+];
+var colorInd = 0;
+
+var rotPoint = function (circ, rect1, a){
+    var distToRect = dist(circ.x, circ.y, rect1.x + rect1.width/2, rect1.y + rect1.height/2);
+    var ang = a || atan2(circ.y - (rect1.y + rect1.height/2), circ.x - (rect1.x + rect1.width/2));
+    var nx, ny;
+    if (a === 0) {
+        nx = rect1.x + rect1.width/2 + cos(ang + radians(rect1.angle)) * distToRect;
+        ny = rect1.y + rect1.height/2 + sin(ang + radians(rect1.angle)) * distToRect;
+    } else {
+        nx = rect1.x + rect1.width/2 + cos(ang - radians(rect1.angle)) * distToRect;
+        ny = rect1.y + rect1.height/2 + sin(ang - radians(rect1.angle)) * distToRect;
+        
+    }
+    
+    return {x: nx, y: ny};
+};
+
+var circToRect = function (circle, rect1) {
+    var cx = constrain(circle.x, rect1.x, rect1.x + rect1.width);
+    var cy = constrain(circle.y, rect1.y, rect1.y + rect1.height);
+    
+    return sq(cx - circle.x) + sq(cy - circle.y) < sq(circle.r);
+};
+
+var rotColl = function (circ, rect1) {
+    var distToRect = dist(circ.x, circ.y, rect1.x + rect1.width/2, rect1.y + rect1.height/2);
+    var ang = atan2(circ.y - (rect1.y + rect1.height/2), circ.x - (rect1.x + rect1.width/2));
+    var nx = rect1.x + rect1.width/2 + cos(ang - rect1.angle) * distToRect;
+    var ny = rect1.y + rect1.height/2 + sin(ang - rect1.angle) * distToRect;
+    var p = rotPoint(circ, rect1);
+    return circToRect({x: p.x, y: p.y, r: circ.r}, rect1);
+};
+
+var drawLine = function(line1){
+    line(line1.x1, line1.y1, line1.x2, line1.y2);
+};
+
+var createLine = function(x1, y1, x2, y2){
+    return {x1: x1, y1: y1, x2: x2, y2: y2};
+};
+
+var createRotRectSide = function (rect1, side) {
+    var point1;
+    var point2;
+    
+    switch (side) {
+        case "top":
+            point1 = {x: rect1.x, y: rect1.y};
+            point2 = {x: rect1.x + rect1.width, y: rect1.y};
+            break;
+        case "left":
+            point1 = {x: rect1.x, y: rect1.y};
+            point2 = {x: rect1.x, y: rect1.y + rect1.height};
+            break;
+        case "right":
+            point1 = {x: rect1.x + rect1.width, y: rect1.y};
+            point2 = {x: rect1.x + rect1.width, y: rect1.y + rect1.height};
+            break;
+        case "botom":
+            point1 = {x: rect1.x, y: rect1.y + rect1.height};
+            point2 = {x: rect1.x + rect1.width, y: rect1.y + rect1.height};
+            break;
+    }
+
+    var p1 = rotPoint(point1, rect1, 0);
+    var p2 = rotPoint(point2, rect1, 0);
+    return createLine(p1.x, p1.y, p2.x, p2.y);
+};
+
+var printLineStats = function(line){
+    println("x1: " + line.x1);
+    println("y1: " + line.y1);
+    println("x2: " + line.x2);
+    println("y2: " + line.y2);
+};
+
+var findSign = function(n){
+    // finds sign of n. returns -1, 1, or 0
+    if (n === 0){
+        return 0;
+    }
+
+    return abs(n)/n;
+};
+
+{
+var calcSlope = function(line){
+    return (line.y2 - line.y1) / (line.x2 - line.x1);
+    // returns the slope of the line
+};
+
+var calcIntercept = function(line, slope){
+    var x = line.x1;
+    var y = line.y1;
+    return y - slope * x;
+    // returns intercept (b in mx + b = y)
+};
+
+var isPointOnLine = function(line, point, slope){
+    point = {x: round(point.x), y: round(point.y)};
+    slope = calcSlope(line);
+    var newSlope = calcSlope({x2: line.x1, y2: line.y1, x1: point.x, y1: point.y});
+    if(abs(newSlope - slope) <= 5 || line.x1 === line.x2){
+        if(point.x >= min(line.x1, line.x2) && point.x <= max(line.x1, line.x2) && point.y >= min(line.y1, line.y2) && point.y <= max(line.y1, line.y2)){
+            return true;
+        }
+    } else{
+        return false;
+    }
+    
+};
+
+var prepLine = function(line){
+    if(line.x1 === line.x2){
+        return {x: line.x1, vertical: true, x1: line.x1,  y1: line.y1,  x2: line.x2,  y2: line.y2};
+    }
+    var m = calcSlope(line);
+    return {m: m, b: calcIntercept(line, m), x1: line.x1,  y1: line.y1,  x2: line.x2,  y2: line.y2};
+};
+
+var findIntersection = function(line1, line2) {
+    line1 = prepLine(line1);
+    line2 = prepLine(line2);
+  if (line1.vertical && line2.vertical) {
+    // Both lines are vertical, no intersection
+    return {inter: false};
+  } else if (line1.vertical) {
+    // Line 1 is vertical, calculate intersection with Line 2
+    var x = line1.x;
+    var y = line2.m * x + line2.b;
+    return {x: x, y: y, inter: isPointOnLine(line1, {x: x, y: y}, line1.m) && isPointOnLine(line2, {x: x, y: y}, line2.m)};
+  } else if (line2.vertical) {
+    // Line 2 is vertical, calculate intersection with Line 1
+    var x = line2.x;
+    var y = line1.m * x + line1.b;
+    return {x: x, y: y, inter: isPointOnLine(line1, {x: x, y: y}, line1.m) && isPointOnLine(line2, {x: x, y: y}, line2.m)};
+  } else {
+    // Both lines are non-vertical, calculate intersection
+    var x = (line2.b - line1.b) / (line1.m - line2.m);
+    var y = line1.m * x + line1.b;
+    return {x: x, y: y, inter: isPointOnLine(line1, {x: x, y: y}, line1.m) && isPointOnLine(line2, {x: x, y: y}, line2.m)};
+  }
+};
+} // line intersection stuff
+
+var player = {
+    width: 80,
+    height: 30,
+    x: width/2 - 40,
+    y: height - 40,
+    xv: 0,
+    yv: 0,
+    eyeSize: 10,
+    canJump: false,
+    angle: 0,
+    
+    display: function () {
+        
+        var halfWidth = player.width/2;
+        var faceOffset = player.xv/5;
+        
+        pushMatrix();
+            translate(player.x + player.width/2, player.y + player.height/2);
+            rotate(radians(player.angle));
+            
+            // body
+            noStroke();
+            fill(colorSchemes[colorInd].player);
+            rect(0 - player.width/2, 0 - player.height/2, player.width, player.height, 4);
+            
+            // eyes
+            fill(colorSchemes[colorInd].face);
+            ellipse(player.width/4 + player.xv/2 - player.width/2, 0, player.eyeSize, player.eyeSize);
+            ellipse(player.width/4 * 3 + player.xv/2 - player.width/2, 0, player.eyeSize, player.eyeSize);
+            
+            // mouth
+            stroke(colorSchemes[colorInd].face);
+            strokeWeight(4);
+            noFill();
+            arc(halfWidth + player.xv/2 - player.width/2, player.height/2.1 - player.height/2, 10, 10, radians(-10), radians(190));
+        
+        popMatrix();
+        
+    },
+    
+    update: function () {
+        
+        player.xv = constrain((mouseX - player.x - player.width/2)/4,-20, 20);
+        
+        player.xv *= 0.9;
+        player.yv += gravity/3;
+        player.angle = player.xv;
+        player.x += player.xv;
+        
+        if (player.x < 0) {
+            player.x = 0;
+            player.xv *= -0.5;
+        }
+        if (player.x > width - player.width) {
+            player.x = width - player.width;
+            player.xv *= -0.5;
+        }
+        
+    },
+    
+    run: function () {
+        player.update();
+        player.display();
+    },
+};
+
+var Ball = function (config) {
+    this.x = config.x;
+    this.y = config.y;
+    this.r = config.r;
+    this.xv = cos(config.a) * config.speed;
+    this.yv = sin(config.a) * config.speed;
+    this.speed = config.speed;
+};
+
+Ball.prototype.display = function () {
+    noStroke();
+    fill(colorSchemes[colorInd].ball);
+    ellipse(this.x, this.y, this.r * 2, this.r * 2);
+};
+
+Ball.prototype.update = function () {
+    
+    var pastX = this.x;
+    var pastY = this.y;
+    
+    this.x += this.xv;
+    this.y += this.yv;
+
+    if (this.y > height - this.r) {
+        this.y = height - this.r;
+        this.yv *= -1;
+    }
+    if (this.y < this.r) {
+        this.y = this.r;
+        this.yv *= -1;
+    }
+    if (this.x < this.r) {
+        this.x = this.r;
+        this.xv *= -1;
+    }
+    if (this.x > width - this.r) {
+        this.x = width - this.r;
+        this.xv *= -1;
+    }
+    if (rotColl(this, player)){
+        var moveVec = new PVector(this.x - pastX, this.y - pastY);
+        var mag = moveVec.mag();
+        moveVec.normalize();
+        moveVec.mult(mag + this.r);
+        var moveLine = createLine(pastX - moveVec.x, pastY - moveVec.y, pastX + moveVec.x, pastY + moveVec.y);
+        var f = findIntersection(moveLine, createRotRectSide(player, "top"));
+        
+        if (f.inter) {
+            
+            this.yv *= -1;
+            var a = atan2(this.yv, this.xv);
+            if(player.xv > 0) {
+                a += radians(player.xv/4);
+            }
+            moveVec.normalize();
+            moveVec.mult(dist(this.x, this.y, f.x, f.y) + this.r );
+            this.x -= moveVec.x;
+            this.y -= moveVec.y;
+            var a = atan2(this.yv, this.xv);
+            // var a2 = radians(player.angle);
+            // a = a2 + (a2 - a);
+            this.xv = cos(a) * this.speed;
+            this.yv = sin(a) * this.speed;
+        }
+        else {
+            // printLineStats(moveLine);
+            // printLineStats(createRotRectSide(player, "top"));
+        }
+    }  
+};
+
+Ball.prototype.run = function () {
+    this.update();
+    this.display();
+};
+
+var ball = new Ball({
+    x: 300, 
+    y: 300,
+    r: 7,
+    a: radians(random(30, 150)),
+    speed: 8,
+});
+
+var balls = [];
+
+draw = function() {
+    background(colorSchemes[colorInd].back);
+    player.run();
+    ball.run();
+};
+
+mousePressed = function() {
+    mouseHold = true;
+
+};
+
+mouseReleased = function () {
+    mouseHold = false;
+};
+
+
+
+}};
+
+  // Get the canvas that ProcessingJS will use
+  var canvas = document.getElementById("mycanvas"); 
+  // Pass the function to ProcessingJS constructor
+  var processingInstance = new Processing(canvas, programCode); 
+
+
+  </script>
+</html>
