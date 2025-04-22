@@ -30,6 +30,9 @@ var colorSchemes = [
         face: color(255),
         back: color(255),
         ball: color(255, 0, 0),
+        brick: {
+            norm: color(255, 187, 0),
+        },
     }
 ];
 var colorInd = 0;
@@ -244,6 +247,32 @@ var player = {
     },
 };
 
+var Brick = function (config) {
+    this.x = config.x;
+    this.y = config.y;
+    this.width = config.width;
+    this.height = config.height;
+    this.type = config.type;
+};
+
+Brick.prototype.display = function () {
+    fill(colorSchemes[colorInd].brick[this.type]);
+    noStroke();
+    rect(this.x, this.y, this.width, this.height, 4);
+};
+
+var bricks = [];
+
+(function() {
+    bricks.push(new Brick ({
+        x: 200,
+        y: 200,
+        width: 40,
+        height: 30,
+        type: "norm",
+    }))
+})();
+
 var Ball = function (config) {
     this.x = config.x;
     this.y = config.y;
@@ -294,23 +323,10 @@ Ball.prototype.update = function () {
         if (f.inter) {
             
             this.yv *= -1;
-            var a = atan2(this.yv, this.xv);
-            if(player.xv > 0) {
-                a += radians(player.xv/4);
-            }
             moveVec.normalize();
-            moveVec.mult(dist(this.x, this.y, f.x, f.y) + this.r );
+            moveVec.mult(dist(this.x, this.y, f.x, f.y) + this.r + 3);
             this.x -= moveVec.x;
             this.y -= moveVec.y;
-            var a = atan2(this.yv, this.xv);
-            // var a2 = radians(player.angle);
-            // a = a2 + (a2 - a);
-            this.xv = cos(a) * this.speed;
-            this.yv = sin(a) * this.speed;
-        }
-        else {
-            // printLineStats(moveLine);
-            // printLineStats(createRotRectSide(player, "top"));
         }
     }  
 };
@@ -332,6 +348,9 @@ var balls = [];
 
 draw = function() {
     background(colorSchemes[colorInd].back);
+    for (var i = bricks.length - 1; i >= 0; i--) {
+        bricks[i].display();
+    }
     player.run();
     ball.run();
 };
